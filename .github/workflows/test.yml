@@ -1,0 +1,26 @@
+name: test
+on: [push, workflow_dispatch]
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m unittest -v
+      - run: python make_sample.py
+      - name: Reports on the sample files
+        shell: python
+        run: |
+          import subprocess, sys
+          def run(*args):
+              return subprocess.run([sys.executable, "recent.py", *args], capture_output=True, text=True)
+          week = run("sample")
+          assert week.returncode == 0 and "Checked: 6 file(s)" in week.stdout and "draft letter.txt" in week.stdout and "late notes.txt" in week.stdout and "photos todo.txt" in week.stdout and "a future date" in week.stdout and "old tax notes.txt" not in week.stdout, week.stdout
+          month = run("sample", "45")
+          assert month.returncode == 0 and "old tax notes.txt" in month.stdout, month.stdout
+          print("Sample recent files reports checked.")
