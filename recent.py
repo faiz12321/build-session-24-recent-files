@@ -7,8 +7,8 @@ walks a folder, compares each file's modified time with the time now,
 and lists the files inside the window, newest first.
 
 A day means 24 hours here, not a calendar date. A file written
-yesterday at 23:00 is one day old at 07:00 the next morning, even
-though the calendar date changed.
+yesterday at 23:00 is only eight hours old at 07:00 the next morning,
+even though the calendar date changed.
 
 The tool only reads the folder. It has no code that creates, changes,
 moves or deletes anything.
@@ -16,9 +16,32 @@ moves or deletes anything.
 
 import os
 import sys
+import stat
+from pathlib import Path
 import time
 
 DAY = 24 * 60 * 60
+
+
+class UnsafePathError(OSError):
+    """An unsupported path, distinct from a filesystem read error."""
+
+
+def safe_input(value, directory=False):
+    path = Path(value).absolute()
+    if '..' in path.parts:
+        raise UnsafePathError('Parent-traversal paths are unsupported.')
+    for part in [*reversed(path.parents), path]:
+        info = part.lstat()
+        if stat.S_ISLNK(info.st_mode) or getattr(info,'st_file_attributes',0) & 0x400:
+            raise UnsafePathError('Links/reparse points are unsupported.')
+    info = path.lstat()
+    if directory:
+        if not stat.S_ISDIR(info.st_mode):
+            raise UnsafePathError('Expected an ordinary directory.')
+    elif not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+        raise UnsafePathError('Expected an ordinary singly linked file.')
+    return path
 
 
 def scan(folder, days, now=None):
@@ -31,26 +54,52 @@ def scan(folder, days, now=None):
     """
     if now is None:
         now = time.time()
+    folder = safe_input(folder, directory=True)
     checked = 0
     recent = []
     errors = []
-
-    def on_error(exc):
-        errors.append(exc)
-
-    for dirpath, _dirnames, filenames in os.walk(folder, onerror=on_error):
-        for name in filenames:
-            path = os.path.join(dirpath, name)
-            checked += 1
+    total = 0
+    stack = [folder]
+    while stack:
+        current = stack.pop()
+        safe_input(current, directory=True)
+        try:
+            with os.scandir(current) as entries:
+                ordered = sorted(entries, key=lambda entry: entry.name)
+        except OSError as error:
+            errors.append(error)
+            continue
+        for entry in ordered:
+            total += 1
+            if total > 10000:
+                raise OSError('More than 10000 entries; refusing this tree.')
             try:
-                mtime = os.stat(path).st_mtime
-            except OSError:
-                errors.append(path)
+                info = entry.stat(follow_symlinks=False)
+            except OSError as error:
+                checked += 1
+                errors.append(error)
+                continue
+            directory = stat.S_ISDIR(info.st_mode)
+            if not directory:
+                checked += 1
+            try:
+                child = safe_input(entry.path, directory=directory)
+            except UnsafePathError:
+                raise
+            except OSError as error:
+                errors.append(error)
+                continue
+            if directory:
+                stack.append(child)
+                continue
+            try:
+                mtime = os.stat(child).st_mtime
+            except OSError as error:
+                errors.append(error)
                 continue
             age = now - mtime
             if age <= days * DAY:
-                rel = os.path.relpath(path, folder)
-                recent.append((age, rel))
+                recent.append((age, os.path.relpath(child, folder)))
     recent.sort()
     return checked, recent, errors
 
@@ -87,7 +136,11 @@ def main(argv):
         if days < 1:
             print("DAYS must be at least 1.")
             return 1
-    checked, recent, errors = scan(folder, days)
+    try:
+        checked, recent, errors = scan(folder, days)
+    except OSError as error:
+        print('Could not read: ' + str(error))
+        return 2
     print("Recent files report")
     print("Folder: " + folder)
     print("Window: the last {} day(s)".format(days))
@@ -97,12 +150,14 @@ def main(argv):
         print("Changed inside the window:")
         for age, rel in recent:
             print("{}  {}".format(describe(age), rel))
-    else:
+    elif not errors:
         print("Nothing changed inside the window.")
+    else:
+        print("Incomplete scan: unvisited files may be inside the window.")
     if errors:
         print("")
         print("Note: {} file(s) or folder(s) could not be read.".format(len(errors)))
-    return 0
+    return 2 if errors else 0
 
 
 if __name__ == "__main__":
