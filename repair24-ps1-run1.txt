@@ -1,0 +1,103 @@
+### CMD: python --version
+Python 3.12.10
+### EXIT: 0
+
+### CMD: python make_sample.py
+Made sample/ with 6 files.
+Changed times are made up: today, yesterday at 23:59, 2 and
+6 days ago, 40 days ago, and one file dated two days ahead.
+### EXIT: 0
+
+### CMD: python make_sample.py
+Stopped: sample already exists. Nothing was replaced or deleted.
+### EXIT: 1
+
+### CMD: python recent.py sample
+-2 backup.log
+2 draft letter.txt
+1 late notes.txt
+0 notes.txt
+40 old tax notes.txt
+6 photos todo.txt
+### EXIT: 0
+
+### CMD: python recent.py sample
+Recent files report
+Folder: sample
+Window: the last 7 day(s)
+Checked: 6 file(s)
+
+Changed inside the window:
+a future date  backup.log
+today  notes.txt
+today  late notes.txt
+2 days ago  draft letter.txt
+6 days ago  photos todo.txt
+### EXIT: 0
+
+### CMD: python recent.py sample 45
+Recent files report
+Folder: sample
+Window: the last 45 day(s)
+Checked: 6 file(s)
+
+Changed inside the window:
+a future date  backup.log
+today  notes.txt
+today  late notes.txt
+2 days ago  draft letter.txt
+6 days ago  photos todo.txt
+40 days ago  old tax notes.txt
+### EXIT: 0
+
+### CMD: python -m unittest -v
+test_a_file_is_not_a_folder (test_recent.CliTests.test_a_file_is_not_a_folder) ... ok
+test_a_narrower_window_hides_older_files (test_recent.CliTests.test_a_narrower_window_hides_older_files) ... ok
+test_days_must_be_a_whole_number (test_recent.CliTests.test_days_must_be_a_whole_number) ... ok
+test_days_must_be_at_least_one (test_recent.CliTests.test_days_must_be_at_least_one) ... ok
+test_default_window_is_seven_days (test_recent.CliTests.test_default_window_is_seven_days) ... ok
+test_missing_folder_is_a_clear_error (test_recent.CliTests.test_missing_folder_is_a_clear_error) ... ok
+test_no_arguments_prints_usage (test_recent.CliTests.test_no_arguments_prints_usage) ... ok
+test_nothing_in_window_says_so (test_recent.CliTests.test_nothing_in_window_says_so) ... ok
+test_report_shows_window_and_count (test_recent.CliTests.test_report_shows_window_and_count) ... ok
+test_tool_does_not_change_the_tree (test_recent.CliTests.test_tool_does_not_change_the_tree) ... ok
+test_tool_has_no_write_code (test_recent.CliTests.test_tool_has_no_write_code) ... ok
+test_future_is_called_out (test_recent.DescribeTests.test_future_is_called_out) ... ok
+test_one_full_day (test_recent.DescribeTests.test_one_full_day) ... ok
+test_part_days_round_down (test_recent.DescribeTests.test_part_days_round_down) ... ok
+test_several_days (test_recent.DescribeTests.test_several_days) ... ok
+test_under_a_day_is_today (test_recent.DescribeTests.test_under_a_day_is_today) ... ok
+test_bytes_mtimes_preserved (test_recent.FilesystemSafety.test_bytes_mtimes_preserved) ... ok
+test_enumeration_error_returns_nonzero (test_recent.FilesystemSafety.test_enumeration_error_returns_nonzero) ... ok
+test_file_link_refused (test_recent.FilesystemSafety.test_file_link_refused) ... ok
+test_hardlink_refused (test_recent.FilesystemSafety.test_hardlink_refused) ... ok
+test_loop_refused (test_recent.FilesystemSafety.test_loop_refused) ... ok
+test_pipe_refused (test_recent.FilesystemSafety.test_pipe_refused) ... skipped 'Unix pipe unavailable'
+test_root_link_refused (test_recent.FilesystemSafety.test_root_link_refused) ... ok
+test_setup_linked_parent_refused (test_recent.FilesystemSafety.test_setup_linked_parent_refused) ... ok
+test_setup_traversal_refused (test_recent.FilesystemSafety.test_setup_traversal_refused) ... ok
+test_traversal_refused (test_recent.FilesystemSafety.test_traversal_refused) ... ok
+test_cli_repeat_preserves_every_output (test_recent.SafeSetup.test_cli_repeat_preserves_every_output) ... ok
+test_existing_file_preserved (test_recent.SafeSetup.test_existing_file_preserved) ... ok
+test_existing_folder_preserves_nested_bytes_and_mtime (test_recent.SafeSetup.test_existing_folder_preserves_nested_bytes_and_mtime) ... ok
+test_repeat_preserves_every_output (test_recent.SafeSetup.test_repeat_preserves_every_output) ... ok
+test_a_file_that_cannot_be_counted_is_reported (test_recent.ScanTests.test_a_file_that_cannot_be_counted_is_reported) ... ok
+test_empty_folder (test_recent.ScanTests.test_empty_folder) ... ok
+test_exactly_at_the_edge_is_inside (test_recent.ScanTests.test_exactly_at_the_edge_is_inside) ... ok
+test_inside_and_outside_the_window (test_recent.ScanTests.test_inside_and_outside_the_window) ... ok
+test_just_past_the_edge_is_outside (test_recent.ScanTests.test_just_past_the_edge_is_outside) ... ok
+test_nested_files_show_relative_paths (test_recent.ScanTests.test_nested_files_show_relative_paths) ... ok
+test_newest_comes_first (test_recent.ScanTests.test_newest_comes_first) ... ok
+test_preflight_metadata_failure_is_reported (test_recent.ScanTests.test_preflight_metadata_failure_is_reported) ... ok
+
+----------------------------------------------------------------------
+Ran 38 tests in 0.767s
+
+OK (skipped=1)
+Made sample/ with 6 files.
+Changed times are made up: today, yesterday at 23:59, 2 and
+6 days ago, 40 days ago, and one file dated two days ahead.
+Made sample/ with 6 files.
+Changed times are made up: today, yesterday at 23:59, 2 and
+6 days ago, 40 days ago, and one file dated two days ahead.
+### EXIT: 0
