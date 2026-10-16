@@ -4,6 +4,11 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import io
+from contextlib import redirect_stdout
+from pathlib import Path
+from unittest import mock
+import make_sample
 from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -113,6 +118,20 @@ class ScanTests(unittest.TestCase):
         self.assertEqual([rel for _age, rel in recent_], ["new.txt"])
         self.assertEqual(len(errors), 1)
 
+    def test_preflight_metadata_failure_is_reported(self):
+        aged(self.tmp, "new.txt", 1, base=self.now)
+        aged(self.tmp, "mystery.txt", 1, base=self.now)
+        real_safe = recent.safe_input
+        def fail(path, *args, **kwargs):
+            if str(path).endswith("mystery.txt"):
+                raise OSError("pretend preflight metadata failed")
+            return real_safe(path, *args, **kwargs)
+        with mock.patch.object(recent, "safe_input", side_effect=fail):
+            checked, found, errors = recent.scan(self.tmp, 7, now=self.now)
+        self.assertEqual(checked, 2)
+        self.assertEqual([rel for age, rel in found], ["new.txt"])
+        self.assertEqual(len(errors), 1)
+
 
 class CliTests(unittest.TestCase):
     def setUp(self):
@@ -202,6 +221,98 @@ class CliTests(unittest.TestCase):
         for word in ("os.remove", "os.rmdir", "os.rename", "shutil.rmtree",
                      "open(", "os.makedirs", "os.mkdir", "os.utime"):
             self.assertNotIn(word, source)
+
+
+class SafeSetup(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.sample = self.root / 'sample'
+
+    def test_existing_folder_preserves_nested_bytes_and_mtime(self):
+        (self.sample / 'nested').mkdir(parents=True)
+        keep = self.sample / 'nested' / 'keep'
+        keep.write_bytes(b'KEEP')
+        before = keep.read_bytes(), keep.stat().st_mtime_ns
+        with self.assertRaises(FileExistsError):
+            make_sample.make(self.sample)
+        self.assertEqual(before, (keep.read_bytes(), keep.stat().st_mtime_ns))
+
+    def test_existing_file_preserved(self):
+        self.sample.write_bytes(b'KEEP')
+        before = self.sample.read_bytes(), self.sample.stat().st_mtime_ns
+        with self.assertRaises(FileExistsError):
+            make_sample.make(self.sample)
+        self.assertEqual(before, (self.sample.read_bytes(), self.sample.stat().st_mtime_ns))
+
+    def test_repeat_preserves_every_output(self):
+        make_sample.make(self.sample)
+        before = {str(p.relative_to(self.sample)):(p.read_bytes(),p.stat().st_mtime_ns) for p in self.sample.rglob('*') if p.is_file()}
+        with self.assertRaises(FileExistsError):
+            make_sample.make(self.sample)
+        self.assertEqual(before, {str(p.relative_to(self.sample)):(p.read_bytes(),p.stat().st_mtime_ns) for p in self.sample.rglob('*') if p.is_file()})
+
+    def test_cli_repeat_preserves_every_output(self):
+        import subprocess, sys
+        script = self.root / 'make_sample.py'
+        shutil.copyfile(Path(make_sample.__file__).resolve(), script)
+        make_sample.make(self.sample)
+        before = {str(p.relative_to(self.sample)):(p.read_bytes(),p.stat().st_mtime_ns) for p in self.sample.rglob('*') if p.is_file()}
+        result = subprocess.run([sys.executable, str(script)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('sample already exists', result.stderr)
+        self.assertEqual(before, {str(p.relative_to(self.sample)):(p.read_bytes(),p.stat().st_mtime_ns) for p in self.sample.rglob('*') if p.is_file()})
+
+
+
+
+
+class FilesystemSafety(unittest.TestCase):
+    def setUp(self):
+        self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
+        self.root=Path(self.tmp.name);self.sample=self.root/'sample'
+        with redirect_stdout(io.StringIO()):make_sample.make(self.sample)
+    def run_check(self,path):
+        output=io.StringIO()
+        with redirect_stdout(output):code=recent.main(['recent.py',str(path)])
+        return code,output.getvalue()
+    def link(self,path,target,directory=False):
+        try:path.symlink_to(target,target_is_directory=directory)
+        except OSError:self.skipTest('Symlink creation unavailable')
+    def test_root_link_refused(self):
+        link=self.root/'linked';self.link(link,self.sample,True)
+        self.assertEqual(self.run_check(link)[0],2)
+    def test_file_link_refused(self):
+        self.link(self.sample/'link',self.sample/'notes.txt')
+        self.assertEqual(self.run_check(self.sample)[0],2)
+    def test_loop_refused(self):
+        self.link(self.sample/'loop',self.sample,True)
+        self.assertEqual(self.run_check(self.sample)[0],2)
+    def test_hardlink_refused(self):
+        os.link(self.sample/'notes.txt',self.sample/'hard')
+        self.assertEqual(self.run_check(self.sample)[0],2)
+    def test_pipe_refused(self):
+        if not hasattr(os,'mkfifo'):self.skipTest('Unix pipe unavailable')
+        os.mkfifo(self.sample/'pipe')
+        self.assertEqual(self.run_check(self.sample)[0],2)
+    def test_traversal_refused(self):
+        self.assertEqual(self.run_check(self.sample/'..'/'sample')[0],2)
+    def test_setup_linked_parent_refused(self):
+        link=self.root/'linked';self.link(link,self.root,True)
+        with self.assertRaises(OSError):make_sample.make(link/'new')
+        self.assertFalse((self.root/'new').exists())
+    def test_setup_traversal_refused(self):
+        with self.assertRaises(OSError):make_sample.make(self.root/'..'/self.root.name/'new')
+        self.assertFalse((self.root/'new').exists())
+    def test_enumeration_error_returns_nonzero(self):
+        with mock.patch('os.scandir',side_effect=PermissionError('simulated denial')):
+            code,out=self.run_check(self.sample)
+        self.assertEqual(code,2);self.assertIn('could not be read',out)
+    def test_bytes_mtimes_preserved(self):
+        before={str(p.relative_to(self.sample)):(p.read_bytes(),p.stat().st_mtime_ns) for p in self.sample.rglob('*') if p.is_file()}
+        self.run_check(self.sample)
+        self.assertEqual(before,{str(p.relative_to(self.sample)):(p.read_bytes(),p.stat().st_mtime_ns) for p in self.sample.rglob('*') if p.is_file()})
 
 
 if __name__ == "__main__":
